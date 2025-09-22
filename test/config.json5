@@ -1,0 +1,7 @@
+{
+  plugins: {
+    rest: {                        // activate and configure the REST plugin
+      http_port: 8000              // with HTTP server listening on port 8000
+    }
+  }
+}

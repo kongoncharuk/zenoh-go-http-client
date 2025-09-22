@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/r3labs/sse/v2"
 )
@@ -45,7 +45,7 @@ type Client struct {
 func New(base string, opts ...Option) *Client {
 	c := &Client{
 		BaseURL: strings.TrimRight(base, "/"),
-		HTTP:    &http.Client{Timeout: 30 * time.Second},
+		HTTP:    &http.Client{Timeout: 0},
 		headers: map[string]string{},
 	}
 	for _, opt := range opts {
@@ -140,52 +140,39 @@ func (c *Client) Delete(ctx context.Context, keyexpr string) error {
 	return nil
 }
 
-// Subscribe opens an SSE stream on GET /<keyexpr> with Accept: text/event-stream.
+// Subscribe opens an SSE stream on GET /<keyexpr> using a context.
+// Cancelling the context stops the subscription.
 func (c *Client) Subscribe(ctx context.Context, keyExpr string, onSample func(Sample)) (func() error, error) {
 	if c == nil || c.HTTP == nil {
-		return nil, errors.New("nil client")
+		return nil, errors.New("no http client provided")
 	}
 	url := c.join(keyExpr)
 
 	client := sse.NewClient(url)
 	client.Connection = c.HTTP
-	// Always ensure SSE header is present regardless of default headers.
 	client.Headers = map[string]string{"Accept": "text/event-stream"}
 	for k, v := range c.headers {
 		client.Headers[k] = v
 	}
 
-	events := make(chan *sse.Event, 16)
-
-	go func() { _ = client.SubscribeChanRaw(events) }()
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for {
-			select {
-			case <-ctx.Done():
+	// SubscribeWithContext ties the subscription to the provided context.
+	err := client.SubscribeWithContext(ctx, "", func(ev *sse.Event) {
+		log.Println("[SSE] event:", string(ev.Event), "id:", string(ev.ID), "data:", string(ev.Data))
+		if len(ev.Data) > 0 && onSample != nil {
+			var s Sample
+			if err := json.Unmarshal(ev.Data, &s); err != nil {
+				log.Println("Unable to unmarshal event:", err)
 				return
-			case ev, ok := <-events:
-				if !ok || ev == nil || len(ev.Data) == 0 {
-					continue
-				}
-				var s Sample
-				if err := json.Unmarshal(ev.Data, &s); err == nil && onSample != nil {
-					onSample(s)
-				}
 			}
+			onSample(s)
 		}
-	}()
-
-	cancel := func() error {
-		select {
-		case <-done:
-			return nil
-		case <-time.After(200 * time.Millisecond):
-			return nil
-		}
+	})
+	if err != nil {
+		return nil, err
 	}
+
+	// Return a no-op cancel function; the subscription is cancelled by cancelling the context.
+	cancel := func() error { return nil }
 	return cancel, nil
 }
 
