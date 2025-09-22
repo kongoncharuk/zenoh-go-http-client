@@ -143,11 +143,12 @@ func (c *Client) Delete(ctx context.Context, keyexpr string) error {
 // Subscribe opens an SSE stream on GET /<keyexpr> using a context.
 // Cancelling the context stops the subscription.
 func (c *Client) Subscribe(ctx context.Context, keyExpr string, onSample func(Sample)) (func() error, error) {
-	log.Println("Subscribing to", keyExpr)
 	if c == nil || c.HTTP == nil {
 		return nil, errors.New("no http client provided")
 	}
 	url := c.join(keyExpr)
+
+	log.Println("Subscribing to ", keyExpr, " on base ", c.BaseURL, " url=", url)
 
 	client := sse.NewClient(url)
 	client.Connection = c.HTTP
