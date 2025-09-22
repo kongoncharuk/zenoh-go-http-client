@@ -45,7 +45,7 @@ func main() {
     // Subscribe to the topic
     subCtx, subCancel := context.WithCancel(context.Background())
     defer subCancel()
-    _, err = c.Subscribe(subCtx, "demo/example/**", func(s zenohhttp.Sample) {
+    _, err := c.Subscribe(subCtx, "demo/example/**", func(s zenohhttp.Sample) {
         fmt.Printf("[SUB] %s (%s) %s\n", s.Key, s.Encoding, string(s.Value))
     })
     if err != nil {
